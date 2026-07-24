@@ -38,15 +38,13 @@ pub fn request_exit(status: i32) -> Result<(), SyscallError> {
     unsafe { syscall(grimoire::SYS_EXIT, arguments) }.map(|_| ())
 }
 
-/// Spawns a new child process with the specified entry point and semantic class.
-pub fn spawn(entry_point: usize, semantic_class: u8) -> Result<u32, SyscallError> {
-    unsafe {
-        syscall(
-            grimoire::SYS_SPAWN,
-            [entry_point, semantic_class as usize, 0, 0, 0, 0],
-        )
-    }
-    .map(|v| v as u32)
+/// Requests launch of a boot-measured service image.
+///
+/// The kernel owns all executable entry points and address spaces. `service_class`
+/// selects a registered image; it is not an arbitrary code pointer.
+pub fn spawn_service(service_class: u16) -> Result<u32, SyscallError> {
+    unsafe { syscall(grimoire::SYS_SPAWN, [service_class as usize, 0, 0, 0, 0, 0]) }
+        .map(|v| v as u32)
 }
 
 /// Waits for any child process to exit without blocking.
