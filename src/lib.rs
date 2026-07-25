@@ -9,6 +9,7 @@ pub mod env;
 pub mod executor;
 pub mod fabric;
 pub mod fs;
+pub mod hypermedia;
 pub mod input;
 pub mod io;
 pub mod ipc;
