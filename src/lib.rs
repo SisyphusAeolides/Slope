@@ -1,5 +1,6 @@
 #![no_std]
 
+pub mod aegis;
 pub mod bridge;
 pub mod capability;
 pub mod certificate;
