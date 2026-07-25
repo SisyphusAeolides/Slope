@@ -13,15 +13,29 @@ use crate::syscalls::{SYS_INPUT_KEY_NEXT, SYS_INPUT_NEXT};
 pub struct PointerMotion {
     pub delta_x: i16,
     pub delta_y: i16,
+    /// Horizontal wheel movement in device-notches. Zero means no horizontal
+    /// scroll was observed in this packet.
+    pub scroll_x: i16,
+    /// Vertical wheel movement in device-notches. Positive is a physical
+    /// wheel-up motion; applications may apply their persisted scroll policy.
+    pub scroll_y: i16,
     pub buttons: u8,
     _reserved: [u8; 3],
 }
 
 impl PointerMotion {
-    pub const fn new(delta_x: i16, delta_y: i16, buttons: u8) -> Self {
+    pub const fn new(
+        delta_x: i16,
+        delta_y: i16,
+        scroll_x: i16,
+        scroll_y: i16,
+        buttons: u8,
+    ) -> Self {
         Self {
             delta_x,
             delta_y,
+            scroll_x,
+            scroll_y,
             buttons,
             _reserved: [0; 3],
         }
@@ -50,11 +64,13 @@ impl KeyEvent {
     }
 }
 
-/// Returns at most one authentic pointer motion packet.  `None` is normal
+/// Returns at most one authentic normalized pointer packet. `None` is normal
 /// when the controller has no packet waiting; it is not a synthetic event.
+/// Motion, wheel, and button state originate in the same kernel-owned packet,
+/// so Crest cannot accidentally combine data from different controller reads.
 #[cfg(target_os = "none")]
 pub fn next_pointer_motion() -> Result<Option<PointerMotion>, SyscallError> {
-    let mut motion = PointerMotion::new(0, 0, 0);
+    let mut motion = PointerMotion::new(0, 0, 0, 0, 0);
     let available = unsafe {
         syscall(
             SYS_INPUT_NEXT,
@@ -118,8 +134,10 @@ mod tests {
 
     #[test]
     fn pointer_motion_has_a_stable_wire_size() {
-        assert_eq!(core::mem::size_of::<PointerMotion>(), 8);
-        assert_eq!(PointerMotion::new(-4, 9, 1).buttons, 1);
+        assert_eq!(core::mem::size_of::<PointerMotion>(), 12);
+        let motion = PointerMotion::new(-4, 9, 0, -1, 1);
+        assert_eq!(motion.buttons, 1);
+        assert_eq!(motion.scroll_y, -1);
     }
 
     #[test]
