@@ -4,6 +4,7 @@ pub mod aegis;
 pub mod bridge;
 pub mod capability;
 pub mod certificate;
+pub mod display;
 pub mod env;
 pub mod executor;
 pub mod fabric;
