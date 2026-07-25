@@ -30,7 +30,10 @@ pub mod time;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SyscallError(pub isize);
 
-#[cfg(target_arch = "x86_64")]
+/// Executes Sisyphus's six-register syscall ABI only in a native Sisyphus
+/// image. Host builds must never accidentally interpret these numbers as the
+/// host kernel's unrelated syscall table.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub unsafe fn syscall(number: usize, arguments: [usize; 6]) -> Result<usize, SyscallError> {
     let result: isize;
     unsafe {
@@ -55,7 +58,18 @@ pub unsafe fn syscall(number: usize, arguments: [usize; 6]) -> Result<usize, Sys
     }
 }
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub unsafe fn syscall(_number: usize, _arguments: [usize; 6]) -> Result<usize, SyscallError> {
-    Err(SyscallError(-1))
+    Err(SyscallError(-38))
+}
+
+#[cfg(all(test, not(target_os = "none")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_builds_cannot_invoke_the_sisyphus_syscall_abi() {
+        // SAFETY: the host implementation is an explicit fail-closed stub.
+        assert_eq!(unsafe { syscall(0, [0; 6]) }, Err(SyscallError(-38)));
+    }
 }
