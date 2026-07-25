@@ -11,6 +11,7 @@ pub mod fabric;
 pub mod fs;
 pub mod io;
 pub mod ipc;
+pub mod input;
 pub mod kairos;
 pub mod memory;
 pub mod net;
