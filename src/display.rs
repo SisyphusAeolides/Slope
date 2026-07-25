@@ -24,7 +24,10 @@ pub fn present_bgra8888(
     .map_err(|_| SyscallError(-22))?;
     if width == 0
         || height == 0
-        || pitch < width.checked_mul(BGRA8888_BYTES_PER_PIXEL).ok_or(SyscallError(-22))?
+        || pitch
+            < width
+                .checked_mul(BGRA8888_BYTES_PER_PIXEL)
+                .ok_or(SyscallError(-22))?
         || frame.len() != required
     {
         return Err(SyscallError(-22));
@@ -34,7 +37,14 @@ pub fn present_bgra8888(
         let receipt = unsafe {
             syscall(
                 SYS_DISP_PRESENT,
-                [frame.as_ptr() as usize, width as usize, height as usize, pitch as usize, 0, 0],
+                [
+                    frame.as_ptr() as usize,
+                    width as usize,
+                    height as usize,
+                    pitch as usize,
+                    0,
+                    0,
+                ],
             )?
         };
         Ok(receipt as u64)
