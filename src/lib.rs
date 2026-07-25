@@ -29,6 +29,8 @@ pub mod sync;
 pub mod syscalls;
 pub mod thermogenesis;
 pub mod time;
+pub mod tuning;
+pub mod wayland;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SyscallError(pub isize);
