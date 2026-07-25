@@ -28,9 +28,8 @@ pub fn yield_with_hint(unfinished_work: u64) -> Result<(), SyscallError> {
 
 /// Requests termination of the current process.
 ///
-/// The call returns an error while the running kernel lacks scheduler-owned
-/// teardown. Callers must not assume successful termination until this
-/// function stops returning on the target kernel.
+/// On native Boulder, a successful request is a scheduling boundary and does
+/// not return to the caller. A returned result is therefore an error path.
 pub fn request_exit(status: i32) -> Result<(), SyscallError> {
     let arguments = [status as isize as usize, 0, 0, 0, 0, 0];
     // SAFETY: Exit carries only a scalar status and follows Slope's native
