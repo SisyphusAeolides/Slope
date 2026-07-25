@@ -2,7 +2,7 @@
 //
 // Design:
 //   Each size class (8B, 16B, 32B, 64B, 128B, 256B, 512B, 1024B, 2048B, 4096B)
-//   owns a fixed number of slab pages from the kernel (SYS_BRKSLAB).
+//   owns a fixed number of process-private slab pages from its static arena.
 //   Each page is divided into N slots = PAGE_SIZE / object_size.
 //   Free slots tracked via u64 bitmask words (1 bit = 1 slot free).
 //   alloc(size): find the smallest class >= size, find first free slot, return ptr.
@@ -16,17 +16,21 @@
 //   Useful for capability-passing IPC: send a SlabToken instead of a raw pointer.
 //
 // GlobalSlabHeap: implements GlobalAlloc for the #[global_allocator] slot.
-//   Backed by a SpookyCell<HeapState> for process-shared lock-free access.
+//   Backed by a SpookyCell<HeapState> for bounded process-local arbitration.
 
 extern crate alloc;
 
-use crate::syscall;
-use crate::syscalls::SYS_BRKSLAB;
 use core::alloc::{GlobalAlloc, Layout};
+use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub const PAGE_SIZE: usize = 4096;
-pub const SLAB_PAGES: usize = 8; // pages per class at init
 pub const MAX_SLAB_PAGES: usize = 64; // max pages per class before OOM
+/// A native Sisyphus process receives this many private pages for all of its
+/// allocator classes combined. The page budget is fixed in the ELF's BSS, so
+/// allocation never depends on an absent kernel heap-growth syscall.
+pub const USER_HEAP_PAGES: usize = 64;
+const USER_HEAP_BYTES: usize = USER_HEAP_PAGES * PAGE_SIZE;
 
 // Size classes: index → object size in bytes
 pub const SIZE_CLASSES: [usize; 10] = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
@@ -135,7 +139,7 @@ impl SlabClass {
         }
     }
 
-    fn alloc(&mut self) -> Option<*mut u8> {
+    fn alloc(&mut self, arena: &FixedHeapArena) -> Option<*mut u8> {
         // Try existing pages first
         for p in self.pages[..self.page_count].iter_mut().flatten() {
             if let Some(ptr) = p.alloc_slot() {
@@ -143,21 +147,16 @@ impl SlabClass {
             }
         }
         // Grow: request a new page from the kernel
-        self.grow()?;
+        self.grow(arena)?;
         // Try again on the new page
         self.pages[self.page_count - 1].as_mut()?.alloc_slot()
     }
 
-    fn grow(&mut self) -> Option<()> {
+    fn grow(&mut self, arena: &FixedHeapArena) -> Option<()> {
         if self.page_count >= MAX_SLAB_PAGES {
             return None;
         }
-        let args = [self.object_size, PAGE_SIZE, 0, 0, 0, 0];
-        let raw = unsafe { syscall(SYS_BRKSLAB, args) }.ok()?;
-        let base = raw as *mut u8;
-        if base.is_null() {
-            return None;
-        }
+        let base = arena.allocate_page()?;
         self.pages[self.page_count] = Some(SlabPage::new(base, self.object_size));
         self.page_count += 1;
         Some(())
@@ -205,13 +204,51 @@ impl HeapState {
 }
 
 // ─── GLOBAL ALLOCATOR ──────────────────────────────────────────────────────
-// Uses a SpookyCell from slope::sync::entanglement as the lock.
+
+#[repr(align(4096))]
+struct HeapBacking([u8; USER_HEAP_BYTES]);
+
+/// Fixed process-private source of zeroed slab pages.
+///
+/// Every page is BSS-backed by the measured executable's own address space.
+/// That makes allocator capacity part of the image's memory contract rather
+/// than an optimistic request to an unimplemented kernel memory syscall.
+struct FixedHeapArena {
+    backing: UnsafeCell<HeapBacking>,
+    next_page: AtomicUsize,
+}
+
+impl FixedHeapArena {
+    const fn new() -> Self {
+        Self {
+            backing: UnsafeCell::new(HeapBacking([0; USER_HEAP_BYTES])),
+            next_page: AtomicUsize::new(0),
+        }
+    }
+
+    fn allocate_page(&self) -> Option<*mut u8> {
+        let page = self
+            .next_page
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (current < USER_HEAP_PAGES).then_some(current + 1)
+            })
+            .ok()?;
+        // SAFETY: `page` was uniquely reserved by the atomic cursor. The
+        // arena never hands this page out again and all callers initialize it
+        // through the serialized slab state before publishing allocations.
+        Some(unsafe { (*self.backing.get()).0.as_mut_ptr().add(page * PAGE_SIZE) })
+    }
+}
+
+// Uses a SpookyCell from slope::sync::entanglement as the bounded allocator
+// state lock. The arena itself is lock-free only for page reservation.
 
 use crate::sync::entanglement::SpookyCell;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::AtomicBool;
 
 pub struct GlobalSlabHeap {
     cell: SpookyCell<HeapState>,
+    arena: FixedHeapArena,
     ready: AtomicBool,
 }
 
@@ -219,6 +256,7 @@ impl GlobalSlabHeap {
     pub const fn new() -> Self {
         Self {
             cell: SpookyCell::new(HeapState::new()),
+            arena: FixedHeapArena::new(),
             ready: AtomicBool::new(false),
         }
     }
@@ -265,7 +303,9 @@ unsafe impl GlobalAlloc for GlobalSlabHeap {
         };
         let pair = unsafe { crate::sync::entanglement::EntangledPair::from_mapping(&self.cell, 0) };
         pair.mutate_bounded(64, |h| {
-            let ptr = h.classes[ci].alloc().unwrap_or(core::ptr::null_mut());
+            let ptr = h.classes[ci]
+                .alloc(&self.arena)
+                .unwrap_or(core::ptr::null_mut());
             if ptr.is_null() {
                 h.oom_count += 1;
             } else {
@@ -294,9 +334,8 @@ unsafe impl GlobalAlloc for GlobalSlabHeap {
     }
 }
 
-/// Sisyphus binaries call `HEAP.init()` in `_start` before allocating.
-/// Host tests retain their platform allocator.
-pub static HEAP: GlobalSlabHeap = GlobalSlabHeap::new();
+/// Sisyphus binaries call their local `GlobalSlabHeap::init()` in `_start`
+/// before allocating. Each executable deliberately owns a distinct arena.
 
 // ─── SLAB TOKEN — capability-safe allocation identity ──────────────────────
 
