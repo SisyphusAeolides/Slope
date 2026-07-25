@@ -1,38 +1,15 @@
-// QUANTUM CHANNEL — typed capability-bearing IPC
-//
-// QuantumChannel: a kernel-brokered pair of single-producer/single-consumer queues.
-//   Each endpoint holds one send ring and one recv ring.
-//   Messages are fixed 64-byte ChannelMessage frames.
-//   Capability field: the kernel validates cap tokens on send, revokes on close.
-//
-// ChannelMessage layout (64 bytes):
-//   [0..8]   capability: u64  — kernel-issued cap token (0 = none)
-//   [8..12]  tag:        u32  — application-defined message type
-//   [12..16] sequence:   u32  — monotonic send counter
-//   [16..64] payload:   [u8;48]
-//
-// ChannelEndpoint: one end of a channel pair.
-//   send(msg): lock-free enqueue to TX ring.
-//   recv():    lock-free dequeue from RX ring; returns None if empty.
-//
-// ChannelPair: both endpoints, split after kernel creates the channel.
-//   split() consumes the pair into (client_endpoint, server_endpoint).
-//
-// RingSlot: one cell in the channel ring, cache-line aligned (64B).
-// CHANNEL_DEPTH: number of in-flight messages per direction.
+//! Bounded local message transport.
+//!
+//! [`SpscRing`] is a real fixed-capacity single-producer/single-consumer ring
+//! for one address space. Cross-process channels are deliberately absent until
+//! Boulder provides shared mappings and capability-validated endpoints.
 
-extern crate alloc;
-
-use crate::syscall;
-use crate::syscalls::SYS_CHANNEL;
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 pub const CHANNEL_DEPTH: usize = 128;
 pub const MESSAGE_BYTES: usize = 64;
 pub const PAYLOAD_BYTES: usize = 48;
-
-// ─── MESSAGE ───────────────────────────────────────────────────────────────
 
 #[repr(C, align(64))]
 #[derive(Clone, Copy)]
@@ -65,14 +42,12 @@ impl ChannelMessage {
     }
 
     pub fn with_payload(tag: u32, data: &[u8]) -> Self {
-        let mut msg = Self::with_tag(tag);
-        let n = data.len().min(PAYLOAD_BYTES);
-        msg.payload[..n].copy_from_slice(&data[..n]);
-        msg
+        let mut message = Self::with_tag(tag);
+        let length = data.len().min(PAYLOAD_BYTES);
+        message.payload[..length].copy_from_slice(&data[..length]);
+        message
     }
 }
-
-// ─── RING SLOT ─────────────────────────────────────────────────────────────
 
 const SLOT_EMPTY: u64 = 0;
 const SLOT_WRITING: u64 = 1;
@@ -94,9 +69,9 @@ impl RingSlot {
     }
 }
 
+// SAFETY: slot state gives the sole producer and sole consumer mutually
+// exclusive access to `message`; publication uses Release/Acquire ordering.
 unsafe impl Sync for RingSlot {}
-
-// ─── SPSC RING ─────────────────────────────────────────────────────────────
 
 #[repr(C, align(4096))]
 pub struct SpscRing {
@@ -116,7 +91,7 @@ impl SpscRing {
         }
     }
 
-    pub fn send(&self, msg: ChannelMessage) -> Result<(), ChannelError> {
+    pub fn send(&self, message: ChannelMessage) -> Result<(), ChannelError> {
         let head = self.producer.load(Ordering::Relaxed) as usize;
         let slot = &self.slots[head % CHANNEL_DEPTH];
         slot.state
@@ -127,10 +102,8 @@ impl SpscRing {
                 Ordering::Relaxed,
             )
             .map_err(|_| ChannelError::Full)?;
-        // SAFETY: We hold WRITING — exclusive producer access.
-        unsafe {
-            *slot.message.get() = msg;
-        }
+        // SAFETY: this producer owns the slot in WRITING state.
+        unsafe { *slot.message.get() = message };
         slot.state.store(SLOT_READY, Ordering::Release);
         self.producer
             .store(((head + 1) % CHANNEL_DEPTH) as u32, Ordering::Release);
@@ -148,233 +121,32 @@ impl SpscRing {
                 Ordering::Relaxed,
             )
             .ok()?;
-        // SAFETY: We hold READING — exclusive consumer access.
-        let msg = unsafe { *slot.message.get() };
+        // SAFETY: this consumer owns the slot in READING state.
+        let message = unsafe { *slot.message.get() };
         slot.state.store(SLOT_EMPTY, Ordering::Release);
         self.consumer
             .store(((tail + 1) % CHANNEL_DEPTH) as u32, Ordering::Release);
-        Some(msg)
+        Some(message)
     }
 
     pub fn is_empty(&self) -> bool {
         let tail = self.consumer.load(Ordering::Relaxed) as usize;
-        let slot = &self.slots[tail % CHANNEL_DEPTH];
-        slot.state.load(Ordering::Relaxed) != SLOT_READY
+        self.slots[tail % CHANNEL_DEPTH]
+            .state
+            .load(Ordering::Acquire)
+            != SLOT_READY
     }
 }
 
-// ─── CHANNEL PAIR ──────────────────────────────────────────────────────────
-// A ChannelPair owns two rings in a single kernel-mapped allocation.
-// After kernel creates it, split() gives each side one endpoint.
-
-pub struct ChannelPair {
-    a_to_b: SpscRing,
-    b_to_a: SpscRing,
-    _kernel_handle: u64,
-}
-
-impl ChannelPair {
-    /// Allocate a new channel pair via the Boulder capability broker.
-    pub fn create() -> Result<Self, ChannelError> {
-        let args = [0usize; 6];
-        let handle =
-            unsafe { syscall(SYS_CHANNEL, args) }.map_err(|_| ChannelError::KernelRefused)?;
-        Ok(Self {
-            a_to_b: SpscRing::new(),
-            b_to_a: SpscRing::new(),
-            _kernel_handle: handle as u64,
-        })
-    }
-
-    /// Returns (endpoint_a, endpoint_b). Consumes self.
-    /// endpoint_a sends on a_to_b, recvs on b_to_a.
-    /// endpoint_b sends on b_to_a, recvs on a_to_b.
-    pub fn split(self) -> (ChannelEndpointA<'static>, ChannelEndpointB<'static>) {
-        // Leak the pair into a static allocation — both endpoints borrow it.
-        // In a real kernel the rings live in the shared mapping.
-        // Here we box-leak for now; replace with SYS_SHMAP in production.
-        let leaked: &'static mut ChannelPair =
-            alloc::boxed::Box::leak(alloc::boxed::Box::new(self));
-        (
-            ChannelEndpointA { pair: leaked },
-            ChannelEndpointB { pair: leaked },
-        )
-    }
-}
-
-pub struct ChannelEndpointA<'p> {
-    pair: &'p ChannelPair,
-}
-
-pub struct ChannelEndpointB<'p> {
-    pair: &'p ChannelPair,
-}
-
-impl ChannelEndpointA<'_> {
-    pub fn send(&self, msg: ChannelMessage) -> Result<(), ChannelError> {
-        self.pair.a_to_b.send(msg)
-    }
-    pub fn recv(&self) -> Option<ChannelMessage> {
-        self.pair.b_to_a.recv()
-    }
-    pub fn is_inbox_empty(&self) -> bool {
-        self.pair.b_to_a.is_empty()
-    }
-}
-
-impl ChannelEndpointB<'_> {
-    pub fn send(&self, msg: ChannelMessage) -> Result<(), ChannelError> {
-        self.pair.b_to_a.send(msg)
-    }
-    pub fn recv(&self) -> Option<ChannelMessage> {
-        self.pair.a_to_b.recv()
-    }
-    pub fn is_inbox_empty(&self) -> bool {
-        self.pair.a_to_b.is_empty()
+impl Default for SpscRing {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ChannelError {
     Full,
-    Empty,
-    KernelRefused,
-    CapabilityRevoked,
-}
-
-// ─── TYPED ENDPOINT ─────────────────────────────────────────────────────────
-
-use core::cell::Cell;
-use core::marker::PhantomData;
-
-use crate::capability::{CapHandle, FabricRight};
-
-pub const ENDPOINT_PAYLOAD_BYTES: usize = PAYLOAD_BYTES - 2;
-
-pub trait WireMessage: Sized {
-    const TAG: u32;
-
-    fn encode(&self, destination: &mut [u8; ENDPOINT_PAYLOAD_BYTES]) -> Result<usize, CodecError>;
-
-    fn decode(bytes: &[u8]) -> Result<Self, CodecError>;
-}
-
-pub trait EndpointTransport {
-    fn transport_send(&self, message: ChannelMessage) -> Result<(), ChannelError>;
-    fn transport_recv(&self) -> Option<ChannelMessage>;
-}
-
-impl EndpointTransport for ChannelEndpointA<'_> {
-    fn transport_send(&self, message: ChannelMessage) -> Result<(), ChannelError> {
-        ChannelEndpointA::send(self, message)
-    }
-
-    fn transport_recv(&self) -> Option<ChannelMessage> {
-        ChannelEndpointA::recv(self)
-    }
-}
-
-impl EndpointTransport for ChannelEndpointB<'_> {
-    fn transport_send(&self, message: ChannelMessage) -> Result<(), ChannelError> {
-        ChannelEndpointB::send(self, message)
-    }
-
-    fn transport_recv(&self) -> Option<ChannelMessage> {
-        ChannelEndpointB::recv(self)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CodecError {
-    TooLarge,
-    InvalidFrame,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum EndpointError {
-    Channel(ChannelError),
-    Codec(CodecError),
-    UnexpectedTag,
-    CapabilityMismatch,
-}
-
-pub struct Endpoint<Transport, Message> {
-    transport: Transport,
-    capability: CapHandle<FabricRight>,
-    sequence: Cell<u32>,
-    _message: PhantomData<Message>,
-}
-
-impl<Transport, Message> Endpoint<Transport, Message>
-where
-    Transport: EndpointTransport,
-    Message: WireMessage,
-{
-    pub const fn new(transport: Transport, capability: CapHandle<FabricRight>) -> Self {
-        Self {
-            transport,
-            capability,
-            sequence: Cell::new(0),
-            _message: PhantomData,
-        }
-    }
-
-    pub fn send(&self, value: &Message) -> Result<u32, EndpointError> {
-        let mut message = ChannelMessage::with_tag(Message::TAG);
-        message.capability = self.capability.as_raw();
-
-        let length = value
-            .encode(
-                (&mut message.payload[2..])
-                    .try_into()
-                    .map_err(|_| EndpointError::Codec(CodecError::InvalidFrame))?,
-            )
-            .map_err(EndpointError::Codec)?;
-
-        if length > ENDPOINT_PAYLOAD_BYTES {
-            return Err(EndpointError::Codec(CodecError::TooLarge));
-        }
-
-        message.payload[..2].copy_from_slice(&(length as u16).to_le_bytes());
-
-        let sequence = self.sequence.get().wrapping_add(1).max(1);
-        self.sequence.set(sequence);
-        message.sequence = sequence;
-
-        self.transport
-            .transport_send(message)
-            .map_err(EndpointError::Channel)?;
-
-        Ok(sequence)
-    }
-
-    pub fn receive(&self) -> Result<Option<Message>, EndpointError> {
-        let Some(message) = self.transport.transport_recv() else {
-            return Ok(None);
-        };
-
-        if message.tag != Message::TAG {
-            return Err(EndpointError::UnexpectedTag);
-        }
-
-        if message.capability != self.capability.as_raw() {
-            return Err(EndpointError::CapabilityMismatch);
-        }
-
-        let length = usize::from(u16::from_le_bytes([message.payload[0], message.payload[1]]));
-
-        if length > ENDPOINT_PAYLOAD_BYTES {
-            return Err(EndpointError::Codec(CodecError::InvalidFrame));
-        }
-
-        Message::decode(&message.payload[2..2 + length])
-            .map(Some)
-            .map_err(EndpointError::Codec)
-    }
-
-    pub fn into_transport(self) -> Transport {
-        self.transport
-    }
 }
 
 #[cfg(test)]
@@ -384,17 +156,17 @@ mod tests {
     #[test]
     fn spsc_ring_send_recv_roundtrip() {
         let ring = SpscRing::new();
-        let msg = ChannelMessage::with_tag(42);
-        ring.send(msg).unwrap();
-        let got = ring.recv().unwrap();
-        assert_eq!(got.tag, 42);
+        let message = ChannelMessage::with_tag(42);
+        ring.send(message).unwrap();
+        assert_eq!(ring.recv().unwrap().tag, 42);
+        assert!(ring.is_empty());
     }
 
     #[test]
     fn ring_full_returns_error() {
         let ring = SpscRing::new();
-        for i in 0..CHANNEL_DEPTH {
-            ring.send(ChannelMessage::with_tag(i as u32)).unwrap();
+        for index in 0..CHANNEL_DEPTH {
+            ring.send(ChannelMessage::with_tag(index as u32)).unwrap();
         }
         assert_eq!(
             ring.send(ChannelMessage::with_tag(999)),
@@ -404,7 +176,12 @@ mod tests {
 
     #[test]
     fn ring_empty_returns_none() {
-        let ring = SpscRing::new();
-        assert!(ring.recv().is_none());
+        assert!(SpscRing::new().recv().is_none());
+    }
+
+    #[test]
+    fn payload_is_bounded_without_allocating() {
+        let message = ChannelMessage::with_payload(7, &[0xaa; PAYLOAD_BYTES + 1]);
+        assert_eq!(message.payload, [0xaa; PAYLOAD_BYTES]);
     }
 }
