@@ -47,6 +47,7 @@ impl TuningProfileLease {
                 self.state,
                 state::APPLIED | state::ROLLED_BACK | state::REJECTED
             )
+            && self.reserved == 0
             && self.generation != 0
             && self.capability != 0
             && !is_zero_hash(self.profile_hash)
@@ -59,6 +60,17 @@ impl TuningProfileLease {
 
     pub const fn is_usable(self) -> bool {
         self.valid() && self.state == state::APPLIED
+    }
+
+    /// Validates a lease against the generation that Hermes/Aegis currently
+    /// admits.  A well-formed record from an older transaction is still stale
+    /// and must not reach Crest's settings surface.
+    pub const fn valid_for_generation(self, expected_generation: u64) -> bool {
+        expected_generation != 0 && self.valid() && self.generation == expected_generation
+    }
+
+    pub const fn is_usable_for_generation(self, expected_generation: u64) -> bool {
+        self.valid_for_generation(expected_generation) && self.state == state::APPLIED
     }
 }
 
@@ -125,6 +137,29 @@ mod tests {
                 ..profile
             }
             .valid()
+        );
+        assert!(
+            !TuningProfileLease {
+                reserved: 1,
+                ..profile
+            }
+            .valid()
+        );
+    }
+
+    #[test]
+    fn stale_generation_cannot_be_used_as_a_current_observation() {
+        let profile = applied();
+        assert!(profile.valid_for_generation(9));
+        assert!(profile.is_usable_for_generation(9));
+        assert!(!profile.valid_for_generation(8));
+        assert!(!profile.valid_for_generation(0));
+        assert!(
+            !TuningProfileLease {
+                state: state::ROLLED_BACK,
+                ..profile
+            }
+            .is_usable_for_generation(9)
         );
     }
 }
