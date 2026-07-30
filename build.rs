@@ -25,6 +25,7 @@ fn main() {
             .arg("-c")
             .arg("-O2")
             .arg("-fPIC")
+            .arg(format!("-J{}", output.display()))
             .arg("native/slope_policy.f90")
             .arg("-o")
             .arg(&object),
