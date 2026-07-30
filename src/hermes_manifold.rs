@@ -1,4 +1,4 @@
-//! OS-wide Hermes phase manifold shared by Boulder, Crest, and formal proofs.
+//! OS-wide Hermes phase manifold shared by Arach, Crest, and formal proofs.
 //!
 //! The lattice mirrors `formal/idris2/HermesAuthority.idr`: Online is never a
 //! free jump from Probe. Callers publish evidence; this module only advances

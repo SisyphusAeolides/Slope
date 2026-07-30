@@ -1,16 +1,23 @@
 [package]
 name = "slope"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+repository = "https://github.com/SisyphusAeolides/Slope"
+description = "Capability-oriented userspace ABI and runtime library for Arach OS"
+build = "build.rs"
+
+[features]
+default = []
+fortran-policy = []
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-aether = { path = "../../core/aether" }
-kairos = { path = "../../core/kairos" }
+aether = { git = "https://github.com/SisyphusAeolides/Arach-Kernel.git", rev = "c2507bb21c516dc68a4e45c4b29c45615dedc4df" }
+kairos = { git = "https://github.com/SisyphusAeolides/Arach-Kernel.git", rev = "c2507bb21c516dc68a4e45c4b29c45615dedc4df" }
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"

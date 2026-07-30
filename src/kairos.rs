@@ -1,4 +1,4 @@
-//! Userland access to Boulder's Kairos machine-topology and ABI services.
+//! Userland access to Arach's Kairos machine-topology and ABI services.
 //!
 //! The fixed-size representations in this module intentionally avoid a heap.
 //! They mirror the limits in `core/kairos` and are suitable for process-wide

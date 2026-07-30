@@ -1,6 +1,6 @@
 //! Native Crest pointing-device ABI.
 //!
-//! Boulder normalizes one trusted controller packet at a time.  This client
+//! Arach normalizes one trusted controller packet at a time.  This client
 //! exposes neither raw controller bytes nor an I/O capability to user space.
 
 use crate::SyscallError;

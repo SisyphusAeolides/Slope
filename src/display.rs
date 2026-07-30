@@ -1,6 +1,6 @@
 //! Crest's capability-preserving firmware presentation client.
 //!
-//! This ABI accepts pixels only.  Boulder authenticates the live measured
+//! This ABI accepts pixels only.  Arach authenticates the live measured
 //! Crest process and owns every display object, MMIO mapping, and page flip.
 
 use crate::SyscallError;

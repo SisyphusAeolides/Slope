@@ -1,6 +1,6 @@
 // THERMOGENESIS CLIENT — zero-syscall thermal pressure awareness
 //
-// The Boulder kernel maintains a per-process ThermalPage at a fixed mapping
+// The Arach kernel maintains a per-process ThermalPage at a fixed mapping
 // address. It writes thermal readings via Release stores; userland reads with
 // Acquire loads. No syscall on the hot path — just an atomic read.
 //

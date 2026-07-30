@@ -1,6 +1,6 @@
 //! Capability-bound display and input records for promoting Crest's shell.
 //!
-//! These records are deliberately only an ABI contract.  Boulder must still
+//! These records are deliberately only an ABI contract.  Arach must still
 //! mint the shared mapping and endpoint capabilities before a native process
 //! can publish or consume one.  The hosted Smithay compositor is the first
 //! implementation of the policy; this module gives the native adapter an

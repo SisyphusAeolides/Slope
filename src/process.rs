@@ -12,7 +12,7 @@ pub fn yield_now() -> Result<(), SyscallError> {
 
 /// Cooperatively yields while attaching a bounded scheduler-policy hint.
 ///
-/// The current Boulder boundary records the scalar hint for future scheduler
+/// The current Arach boundary records the scalar hint for future scheduler
 /// policy; it does not promise retroactive execution or priority changes.
 pub fn yield_with_hint(unfinished_work: u64) -> Result<(), SyscallError> {
     // SAFETY: Yield carries no pointer arguments and follows Slope's native
@@ -28,7 +28,7 @@ pub fn yield_with_hint(unfinished_work: u64) -> Result<(), SyscallError> {
 
 /// Requests termination of the current process.
 ///
-/// On native Boulder, a successful request is a scheduling boundary and does
+/// On native Arach, a successful request is a scheduling boundary and does
 /// not return to the caller. A returned result is therefore an error path.
 pub fn request_exit(status: i32) -> Result<(), SyscallError> {
     let arguments = [status as isize as usize, 0, 0, 0, 0, 0];

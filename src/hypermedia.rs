@@ -1,4 +1,4 @@
-//! Bounded HTTPS lease types shared by Argus, Push, and Boulder's future
+//! Bounded HTTPS lease types shared by Argus, Push, and Arach's future
 //! transport broker.
 //!
 //! These values are intentionally data-only. They do not expose a socket,
@@ -42,7 +42,7 @@ pub struct TlsTrustAnchor {
 }
 
 impl TlsTrustAnchor {
-    /// Imports a trust decision made by the authenticated Boulder/Hermes
+    /// Imports a trust decision made by the authenticated Arach/Hermes
     /// broker. A zero fingerprint or generation is never a valid authority.
     pub unsafe fn from_broker(
         origin: HttpsOrigin,
@@ -268,7 +268,7 @@ impl HttpsRequest {
     }
 }
 
-/// Opaque HTTPS authority imported from Push/Boulder. The raw capability is
+/// Opaque HTTPS authority imported from Push/Arach. The raw capability is
 /// private, so Argus cannot reinterpret it as a generic network capability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HttpLease {
@@ -284,7 +284,7 @@ impl HttpLease {
     ///
     /// # Safety
     ///
-    /// Every field must come from Push's authenticated reply after Boulder has
+    /// Every field must come from Push's authenticated reply after Arach has
     /// retained the corresponding transport/TLS state.
     pub const unsafe fn from_broker(
         capability: u64,
@@ -455,7 +455,7 @@ const _: () = assert!(core::mem::size_of::<HttpIpcRequest>() == 216);
 /// Authority for one Argus-to-Hermes endpoint and its retained shared
 /// mapping.  The two handles are opaque broker values; neither is a pointer
 /// and neither can be used to open a raw socket.  Revocation is performed by
-/// [`ArgusEndpointSession`] before the mapping is released by Boulder.
+/// [`ArgusEndpointSession`] before the mapping is released by Arach.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ArgusEndpointLease {

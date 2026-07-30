@@ -1,6 +1,6 @@
 // PROCESS ENVIRONMENT — quantum argv + environment variables
 //
-// Boulder passes argv/envp to userland via a fixed ABI slot at process start:
+// Arach passes argv/envp to userland via a fixed ABI slot at process start:
 // the stack pointer on entry points to:
 //   [argc: u64] [argv_ptr_0: u64] ... [argv_ptr_n: u64] [null] [envp_ptr_0] ... [null]
 //
@@ -34,7 +34,7 @@ impl QuantumArgv {
     /// Construct from the raw stack pointer passed at process entry.
     ///
     /// # Safety
-    /// `stack_ptr` must point to the Boulder process stack ABI layout:
+    /// `stack_ptr` must point to the Arach process stack ABI layout:
     ///   [argc][argv_0]...[argv_n][null][envp_0]...[null]
     pub const unsafe fn from_stack(stack_ptr: *const u8) -> Self {
         let base = stack_ptr as *const u64;
@@ -137,7 +137,7 @@ pub struct QuantumEnv {
 
 impl QuantumEnv {
     /// # Safety
-    /// `envp_base` must point to the Boulder envp block (null-terminated u64 ptr array).
+    /// `envp_base` must point to the Arach envp block (null-terminated u64 ptr array).
     pub const unsafe fn from_ptr(envp_base: *const u64) -> Self {
         Self { base: envp_base }
     }

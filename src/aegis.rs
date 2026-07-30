@@ -1,6 +1,6 @@
 //! Read-only Aegis service observation.
 //!
-//! Boulder authenticates the caller against the exact live measured image;
+//! Arach authenticates the caller against the exact live measured image;
 //! this client never accepts a PID supplied by user space.
 
 use crate::SyscallError;
@@ -42,8 +42,8 @@ pub fn crest_status() -> Result<CrestServiceStatus, SyscallError> {
     CrestServiceStatus::decode(word).ok_or(SyscallError(-74))
 }
 
-/// Host builds have no Boulder process registry and must not issue a raw host
-/// syscall using Sisyphus's ABI number.
+/// Host builds have no Arach process registry and must not issue a raw host
+/// syscall using Arach's ABI number.
 #[cfg(not(target_os = "none"))]
 pub fn crest_status() -> Result<CrestServiceStatus, SyscallError> {
     let _ = grimoire::SYS_AEGIS_STATUS;

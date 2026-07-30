@@ -4,24 +4,38 @@ use crate::env::{EnvSnapshot, PhaseKey};
 
 pub trait Right {
     const ENV_KEY: PhaseKey;
+    const LEGACY_ENV_KEY: Option<PhaseKey> = None;
 }
 
 macro_rules! declare_right {
-    ($name:ident, $key:literal) => {
+    ($name:ident, $key:literal, $legacy:literal) => {
         pub enum $name {}
 
         impl Right for $name {
             const ENV_KEY: PhaseKey = PhaseKey::from_bytes($key.as_bytes());
+            const LEGACY_ENV_KEY: Option<PhaseKey> = Some(PhaseKey::from_bytes($legacy.as_bytes()));
         }
     };
 }
 
-declare_right!(FabricRight, "SISYPHUS_CAP_FABRIC");
-declare_right!(ResonanceRight, "SISYPHUS_CAP_RESONANCE");
-declare_right!(SchedulerRight, "SISYPHUS_CAP_SCHEDULER");
-declare_right!(LearningRight, "SISYPHUS_CAP_LEARNING");
-declare_right!(DmaRight, "SISYPHUS_CAP_DMA");
-declare_right!(DeviceMemoryRight, "SISYPHUS_CAP_DEVICE_MEMORY");
+declare_right!(FabricRight, "ARACH_CAP_FABRIC", "SISYPHUS_CAP_FABRIC");
+declare_right!(
+    ResonanceRight,
+    "ARACH_CAP_RESONANCE",
+    "SISYPHUS_CAP_RESONANCE"
+);
+declare_right!(
+    SchedulerRight,
+    "ARACH_CAP_SCHEDULER",
+    "SISYPHUS_CAP_SCHEDULER"
+);
+declare_right!(LearningRight, "ARACH_CAP_LEARNING", "SISYPHUS_CAP_LEARNING");
+declare_right!(DmaRight, "ARACH_CAP_DMA", "SISYPHUS_CAP_DMA");
+declare_right!(
+    DeviceMemoryRight,
+    "ARACH_CAP_DEVICE_MEMORY",
+    "SISYPHUS_CAP_DEVICE_MEMORY"
+);
 
 #[repr(transparent)]
 pub struct CapHandle<R: Right> {
@@ -64,7 +78,8 @@ impl<'environment> CapabilityEnvelope<'environment> {
         let bytes = self
             .environment
             .get(R::ENV_KEY)
-            .ok_or(CapabilityError::Missing)?;
+            .or_else(|| R::LEGACY_ENV_KEY.and_then(|legacy| self.environment.get(legacy)));
+        let bytes = bytes.ok_or(CapabilityError::Missing)?;
 
         let raw = parse_handle(bytes)?;
         if raw == 0 {

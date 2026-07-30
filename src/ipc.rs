@@ -2,7 +2,7 @@
 //!
 //! [`SpscRing`] is a real fixed-capacity single-producer/single-consumer ring
 //! for one address space. Cross-process channels are deliberately absent until
-//! Boulder provides shared mappings and capability-validated endpoints.
+//! Arach provides shared mappings and capability-validated endpoints.
 
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};

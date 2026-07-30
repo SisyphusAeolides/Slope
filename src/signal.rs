@@ -121,7 +121,7 @@ impl CoronalMatrix {
         handler(event);
     }
 
-    /// Register the trampoline with the Boulder kernel.
+    /// Register the trampoline with the Arach kernel.
     /// `trampoline` is an `extern "C" fn(*const DischargeEvent)` set up by _start.
     pub fn install(&self, trampoline: usize) -> Result<(), SyscallError> {
         let args = [trampoline, self as *const Self as usize, 0, 0, 0, 0];

@@ -18,6 +18,7 @@ pub mod kairos;
 pub mod memory;
 pub mod net;
 pub mod nexus;
+pub mod policy;
 pub mod process;
 pub mod quantum_crest;
 pub mod resonance_plane;
@@ -36,7 +37,7 @@ pub mod wayland;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SyscallError(pub isize);
 
-/// Executes Sisyphus's six-register syscall ABI only in a native Sisyphus
+/// Executes Arach OS's six-register syscall ABI only in a native Arach
 /// image. Host builds must never accidentally interpret these numbers as the
 /// host kernel's unrelated syscall table.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
@@ -74,7 +75,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn host_builds_cannot_invoke_the_sisyphus_syscall_abi() {
+    fn host_builds_cannot_invoke_the_arach_syscall_abi() {
         // SAFETY: the host implementation is an explicit fail-closed stub.
         assert_eq!(unsafe { syscall(0, [0; 6]) }, Err(SyscallError(-38)));
     }

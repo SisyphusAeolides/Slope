@@ -1,4 +1,4 @@
-//! Shared early-process initialization for Sisyphus userland binaries.
+//! Shared early-process initialization for Arach userland binaries.
 
 use crate::env::{EnvSnapshot, QuantumArgv, QuantumEnv};
 use crate::kairos::{
@@ -26,7 +26,7 @@ impl ProcessRuntime {
     ///
     /// # Safety
     ///
-    /// `stack_ptr` must reference Boulder's documented process-entry stack
+    /// `stack_ptr` must reference Arach's documented process-entry stack
     /// layout for the lifetime of the process.
     pub unsafe fn initialize(
         stack_ptr: *const u8,

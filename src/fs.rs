@@ -2,7 +2,7 @@
 //
 // An AkashicHandle is a kernel-issued capability token, not an integer fd.
 // Paths are causal addresses: UTF-8 byte slices interpreted as content-addressed
-// namespace entries by the Boulder VFS broker.
+// namespace entries by the Arach VFS broker.
 //
 // AkashicFile: safe owned wrapper — closes handle on Drop.
 // AkashicDir:  directory traversal cursor backed by a readdir syscall ring.

@@ -26,7 +26,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub const PAGE_SIZE: usize = 4096;
 pub const MAX_SLAB_PAGES: usize = 64; // max pages per class before OOM
-/// A native Sisyphus process receives this many private pages for all of its
+/// A native Arach process receives this many private pages for all of its
 /// allocator classes combined. The page budget is fixed in the ELF's BSS, so
 /// allocation never depends on an absent kernel heap-growth syscall.
 pub const USER_HEAP_PAGES: usize = 64;
@@ -227,12 +227,21 @@ impl FixedHeapArena {
     }
 
     fn allocate_page(&self) -> Option<*mut u8> {
-        let page = self
-            .next_page
-            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                (current < USER_HEAP_PAGES).then_some(current + 1)
-            })
-            .ok()?;
+        let mut current = self.next_page.load(Ordering::Acquire);
+        let page = loop {
+            if current >= USER_HEAP_PAGES {
+                return None;
+            }
+            match self.next_page.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(reserved) => break reserved,
+                Err(observed) => current = observed,
+            }
+        };
         // SAFETY: `page` was uniquely reserved by the atomic cursor. The
         // arena never hands this page out again and all callers initialize it
         // through the serialized slab state before publishing allocations.
@@ -334,7 +343,7 @@ unsafe impl GlobalAlloc for GlobalSlabHeap {
     }
 }
 
-/// Sisyphus binaries call their local `GlobalSlabHeap::init()` in `_start`
+/// Arach binaries call their local `GlobalSlabHeap::init()` in `_start`
 /// before allocating. Each executable deliberately owns a distinct arena.
 
 // ─── SLAB TOKEN — capability-safe allocation identity ──────────────────────
