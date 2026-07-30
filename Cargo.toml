@@ -16,8 +16,8 @@ fortran-policy = []
 path = "src/lib.rs"
 
 [dependencies]
-aether = { git = "https://github.com/SisyphusAeolides/Arach-Kernel.git", rev = "c4ece493a1b84fa2987ba5ae3d4761501f90267a" }
-kairos = { git = "https://github.com/SisyphusAeolides/Arach-Kernel.git", rev = "c4ece493a1b84fa2987ba5ae3d4761501f90267a" }
+aether = { git = "https://github.com/SisyphusAeolides/Arach-Kernel.git", rev = "99bb9cd5086d9f2c0e9feca8fbe8d6fa30afeec4" }
+kairos = { git = "https://github.com/SisyphusAeolides/Arach-Kernel.git", rev = "99bb9cd5086d9f2c0e9feca8fbe8d6fa30afeec4" }
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
