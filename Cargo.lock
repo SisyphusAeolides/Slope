@@ -5,12 +5,12 @@ version = 4
 [[package]]
 name = "aether"
 version = "0.1.0"
-source = "git+https://github.com/SisyphusAeolides/Arach-Kernel.git?rev=22596d5d8917b0be0f06497f346b5113de526cd1#22596d5d8917b0be0f06497f346b5113de526cd1"
+source = "git+https://github.com/SisyphusAeolides/Arach-Kernel.git?rev=f65bd5ad883e0cfff01a670baa4768e13f0f9159#f65bd5ad883e0cfff01a670baa4768e13f0f9159"
 
 [[package]]
 name = "kairos"
 version = "0.1.0"
-source = "git+https://github.com/SisyphusAeolides/Arach-Kernel.git?rev=22596d5d8917b0be0f06497f346b5113de526cd1#22596d5d8917b0be0f06497f346b5113de526cd1"
+source = "git+https://github.com/SisyphusAeolides/Arach-Kernel.git?rev=f65bd5ad883e0cfff01a670baa4768e13f0f9159#f65bd5ad883e0cfff01a670baa4768e13f0f9159"
 
 [[package]]
 name = "slope"
