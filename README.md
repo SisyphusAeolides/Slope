@@ -1,8 +1,8 @@
 # Slope
 
-Slope is the capability-oriented userspace ABI and runtime library for Arach
-OS. It defines bounded syscall, process, display, input, Wayland, service, and
-COSMIC session contracts without assuming the host kernel's syscall table.
+Slope is the capability-oriented userspace ABI and runtime library for
+ArachOS. It defines bounded syscall, process, display, input, Wayland, service,
+and COSMIC session contracts without assuming the host kernel's syscall table.
 
 Slope is maintained as an independent repository. Its Arach Kernel ABI crates
 are pinned to an immutable kernel revision; consuming repositories should pin
