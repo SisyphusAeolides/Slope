@@ -37,7 +37,7 @@ pub mod wayland;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SyscallError(pub isize);
 
-/// Executes Arach OS's six-register syscall ABI only in a native Arach
+/// Executes ArachOS's six-register syscall ABI only in a native Arach
 /// image. Host builds must never accidentally interpret these numbers as the
 /// host kernel's unrelated syscall table.
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
